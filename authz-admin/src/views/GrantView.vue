@@ -112,11 +112,11 @@
               📁 폴더 메뉴: 권한 부여 시 자손 리프 <b>{{ folderLeafCount }}개</b>로 자동 전개됩니다.
             </el-alert>
             <el-alert v-if="selected.length > 1" type="warning" :closable="false" style="margin:6px 0;">
-              ⚠ 다중 선택 모드 ({{ selected.length }}명/그룹) — 액션을 적용하면 모두에게 일괄 부여됩니다.
+              ⚠ 다중 선택 모드 ({{ selected.length }}명/그룹) — 셀별 부여여부 매트릭스 표시
             </el-alert>
 
-            <!-- 액션 표 -->
-            <el-table :data="actionRows" size="small">
+            <!-- Step 6 — 단일 주체 모드: 기존 액션 표 -->
+            <el-table v-if="selected.length === 1" :data="actionRows" size="small">
               <el-table-column label="" width="40">
                 <template #default="{ row }"><el-checkbox v-model="row.checked" /></template>
               </el-table-column>
@@ -136,6 +136,33 @@
                 </template>
               </el-table-column>
             </el-table>
+
+            <!-- Step 6 — 다중 주체 모드: 매트릭스 (행: 액션, 열: 주체, 셀: ✓/-) -->
+            <div v-else class="matrix-wrap">
+              <el-table :data="actionRows" size="small" border>
+                <el-table-column label="액션" width="100" fixed>
+                  <template #default="{ row }">
+                    <el-checkbox v-model="row.checked" /> <b>{{ row.actionCd }}</b> ({{ row.actionNm }})
+                  </template>
+                </el-table-column>
+                <el-table-column v-for="s in selected" :key="s.id" :label="String(s.label).slice(0,12)" align="center" width="80">
+                  <template #default="{ row }">
+                    <span v-if="matrixCell(s, row.actionCd)" class="check">✓</span>
+                    <span v-else class="dash">-</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="요약" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag size="small" :type="rowSummaryType(row)">
+                      {{ rowGrantedCount(row.actionCd) }}/{{ selected.length }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div class="matrix-hint">
+                ✓ 부여됨 (직접 또는 상속) · - 미부여 — [부여 적용] 클릭 시 미부여 셀에만 신규 grant
+              </div>
+            </div>
 
             <!-- 권한 출처 상세 -->
             <el-collapse v-if="selected.length === 1 && actionRows.some(r => r.sources.length)" style="margin-top:6px;">
@@ -348,7 +375,6 @@ function recomputeActionRows () {
         .filter(p => p.targetId === selectedMenu.value.menu_id && p.actionCd === a.actionCd)
         .map(p => ({ source: 'DIRECT_' + subjectType.value, perm_id: p.permId, via_folder: false }))
       sources = direct
-      // for U-level: pull effective sources for this leaf+action
       if (subjectType.value === 'U' && effective.value[s.id] && selectedMenu.value.menu_type === 'M') {
         const eff = effective.value[s.id].menus.find(m => m.menu_id === selectedMenu.value.menu_id)
         if (eff && eff.actions[a.actionCd]) sources = eff.actions[a.actionCd]
@@ -358,6 +384,29 @@ function recomputeActionRows () {
   })
   actionRows.value = rows
   folderLeafCount.value = selectedMenu.value.menu_type === 'F' ? countLeaves(selectedMenu.value) : 0
+}
+
+// Step 6 — matrix view helpers
+function matrixCell (subj, actionCd) {
+  // returns true if subj has perm on selectedMenu.menu_id with actionCd (direct OR effective)
+  if (!selectedMenu.value) return false
+  const direct = (allPermsBySubject.value[subj.id] || [])
+      .some(p => p.targetId === selectedMenu.value.menu_id && p.actionCd === actionCd)
+  if (direct) return true
+  if (subjectType.value === 'U' && effective.value[subj.id]) {
+    const eff = effective.value[subj.id].menus.find(m => m.menu_id === selectedMenu.value.menu_id)
+    if (eff && eff.actions[actionCd] && eff.actions[actionCd].length) return true
+  }
+  return false
+}
+function rowGrantedCount (actionCd) {
+  return selected.value.filter(s => matrixCell(s, actionCd)).length
+}
+function rowSummaryType (row) {
+  const c = rowGrantedCount(row.actionCd)
+  if (c === 0) return 'info'
+  if (c === selected.value.length) return 'success'
+  return 'warning'
 }
 function countLeaves (n) {
   if (n.menu_type === 'M') return 1
@@ -446,6 +495,12 @@ function resetSelection () {
 .src-line { display:inline-block; margin-left: 4px; }
 .folder-hint { color: #f59e0b; margin-left: 4px; font-size: 11px; }
 .footer-btns { text-align: right; margin-top: 8px; display:flex; gap: 8px; justify-content:flex-end; }
+
+/* Step 6 — 매트릭스 뷰 */
+.matrix-wrap { margin-top: 4px; }
+.matrix-wrap .check { color: #16a34a; font-size: 18px; font-weight: 700; }
+.matrix-wrap .dash { color: #d1d5db; }
+.matrix-hint { padding: 6px 0; color: #94a3b8; font-size: 12px; }
 
 /* 그룹 타입: 같은 아이콘 2개를 살짝 겹쳐서 "여러 명/여러 개" 의미를 시각화 */
 .dual-icon { position: relative; display: inline-block; width: 18px; height: 18px; }

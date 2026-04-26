@@ -114,15 +114,16 @@ public class MenuMappingService {
             List<String> segs = com.hd.authz.common.UrlUtils.segments(impl.getRoutePath());
             if (!segs.isEmpty()) prefix = "/api/" + segs.get(0);
         }
-        Set<Long> mappedApis = new HashSet<>();
-        if (unmappedOnly) {
-            menuActionApiRepo.findAll().forEach(maa -> mappedApis.add(maa.getApiId()));
-        }
+        // Step 4 — N+1 제거: mapped api_ids 한번에, 메뉴-액션 매핑도 한번에 Set 으로
+        Set<Long> systemMappedApis = unmappedOnly ? menuActionApiRepo.findMappedApiIdsForSystem(systemCd) : Set.of();
+        Set<Long> menuActionApis = new HashSet<>();
+        menuActionApiRepo.findByMenuIdAndActionCd(menuId, actionCd)
+                .forEach(maa -> menuActionApis.add(maa.getApiId()));
         List<ApiEntity> apis = apiRepo.findBySystemCd(systemCd);
         List<Map<String, Object>> out = new ArrayList<>();
         for (ApiEntity a : apis) {
             if (methodFilter != null && !methodFilter.isBlank() && !a.getHttpMethod().equalsIgnoreCase(methodFilter)) continue;
-            if (unmappedOnly && mappedApis.contains(a.getApiId())) continue;
+            if (unmappedOnly && systemMappedApis.contains(a.getApiId())) continue;
             boolean recommended = prefix != null && a.getUrlPattern() != null && a.getUrlPattern().startsWith(prefix);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("api_id", a.getApiId());
@@ -131,10 +132,7 @@ public class MenuMappingService {
             row.put("service_nm", a.getServiceNm());
             row.put("status", a.getStatus());
             row.put("recommended", recommended);
-            row.put("already_mapped",
-                    !menuActionApiRepo.findByMenuIdAndActionCd(menuId, actionCd).stream()
-                            .filter(maa -> maa.getApiId().equals(a.getApiId()))
-                            .toList().isEmpty());
+            row.put("already_mapped", menuActionApis.contains(a.getApiId()));
             out.add(row);
         }
         // recommended first

@@ -58,6 +58,32 @@
                 <el-table-column prop="createdAt" label="부여일" />
               </el-table>
             </el-tab-pane>
+            <el-tab-pane label="변경이력" name="audit">
+              <div v-if="!auditData">
+                <el-button size="small" @click="loadAudit">불러오기</el-button>
+              </div>
+              <div v-else>
+                <h4 style="margin: 4px 0;">멤버 변경 (Outbox 이벤트, 최근 {{ auditData.outbox_events.length }}건)</h4>
+                <el-table :data="auditData.outbox_events" size="small" max-height="240">
+                  <el-table-column prop="seq" label="seq" width="80" />
+                  <el-table-column prop="eventType" label="이벤트" width="180" />
+                  <el-table-column prop="createdAt" label="시각" width="180" />
+                  <el-table-column label="상세">
+                    <template #default="{ row }">
+                      <pre style="font-size:11px;margin:0">{{ JSON.stringify(row.payload) }}</pre>
+                    </template>
+                  </el-table-column>
+                </el-table>
+                <h4 style="margin: 12px 0 4px;">권한 변경 (Audit Log, 최근 {{ auditData.permission_audit.length }}건)</h4>
+                <el-table :data="auditData.permission_audit" size="small" max-height="240">
+                  <el-table-column prop="occurredAt" label="시각" width="180" />
+                  <el-table-column prop="actorId" label="행위자" width="140" />
+                  <el-table-column prop="action" label="작업" width="110" />
+                  <el-table-column prop="targetId" label="메뉴ID" width="100" />
+                  <el-table-column prop="actionCd" label="액션" width="80" />
+                </el-table>
+              </div>
+            </el-tab-pane>
           </el-tabs>
         </div>
       </el-col>
@@ -343,8 +369,16 @@ async function loadGroups () {
 
 async function select (g) {
   selected.value = { ...g }
+  auditData.value = null
   await loadMembers()
   await loadPerms()
+}
+
+const auditData = ref(null)
+async function loadAudit () {
+  const id = gid(selected.value)
+  const root = tab.value === 'cg' ? 'company' : tab.value === 'dg' ? 'dept' : 'user'
+  auditData.value = await api.get(`/groups/${root}/${id}/audit?size=50`).then(r => r.data).catch(() => ({ outbox_events: [], permission_audit: [] }))
 }
 
 async function loadMembers () {

@@ -16,4 +16,13 @@ public interface PermissionRepo extends JpaRepository<Permission, Long> {
                                     @Param("st") String st, @Param("sid") String sid,
                                     @Param("tt") String tt, @Param("tid") Long tid,
                                     @Param("ac") String ac);
+
+    /** Step 4 — system 별 권한 (audit/stats 용). */
+    List<Permission> findBySystemCd(String systemCd);
+
+    /** Step 4 — by-api 추적: (target_id, action_cd) 매칭 */
+    @Query("SELECT p FROM Permission p WHERE p.systemCd=:s AND p.targetType='M' AND p.targetId=:menuId AND p.actionCd=:action")
+    List<Permission> findByMenuActionInSystem(@Param("s") String s,
+                                              @Param("menuId") Long menuId,
+                                              @Param("action") String action);
 }

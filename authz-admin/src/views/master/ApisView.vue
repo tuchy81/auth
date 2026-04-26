@@ -80,6 +80,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { Master } from '@/api'
+import api from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAppStore } from '@/store'
 
@@ -107,20 +108,9 @@ const mappedCount = computed(() => mappedSet.value.size)
 
 async function load () {
   rows.value = await Master.apis(app.systemCd)
-  // build mapped set from /menus/{}/mappings is heavy; use stats endpoint on backend if needed
-  // Here we approximate by querying /apis/{}/usages lazily — instead, rely on system stats
-  const stats = await Master.systemStats(app.systemCd).catch(() => ({}))
-  // not perfect — but mark all that have any mapping by api_mapped count + per-row check on demand
-  // do per-row usage fetch only when needed for accurate mapping (skip for perf)
-  // simple: fetch mapping per-row in batch
-  const set = new Set()
-  await Promise.all(rows.value.map(async r => {
-    try {
-      const u = await Master.apiUsages(r.apiId)
-      if (u && u.length) set.add(r.apiId)
-    } catch {}
-  }))
-  mappedSet.value = set
+  // Step 4 — N+1 제거: 매핑된 api_id 를 한 번에 조회
+  const mapped = await api.get(`/systems/${app.systemCd}/api-mapped-set`).then(r => r.data).catch(() => [])
+  mappedSet.value = new Set(Array.isArray(mapped) ? mapped : Object.keys(mapped).map(Number))
 }
 
 function add () { Object.keys(form).forEach(k => delete form[k]); form.systemCd = app.systemCd; form.httpMethod = 'GET'; form.status = 'A'; showDlg.value = true }

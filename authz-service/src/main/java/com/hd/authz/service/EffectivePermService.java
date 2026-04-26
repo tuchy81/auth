@@ -25,6 +25,8 @@ public class EffectivePermService {
 
     private final UserRepo userRepo;
     private final UserGroupMapRepo userGroupMapRepo;
+    private final CompanyGroupMapRepo companyGroupMapRepo;
+    private final DeptGroupMapRepo deptGroupMapRepo;
     private final PermissionRepo permissionRepo;
     private final MenuRepo menuRepo;
 
@@ -54,10 +56,22 @@ public class EffectivePermService {
         addPermsWithSource(grid, "DEPT:" + u.getDeptId(),
                 permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(systemCd, "D", u.getDeptId()),
                 children, menuTypes);
+        // dept groups (DG) — Step 1
+        for (Long dgId : deptGroupMapRepo.findGroupIdsByDept(u.getCompanyCd(), u.getDeptId())) {
+            addPermsWithSource(grid, "DEPT_GROUP:" + dgId,
+                    permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(systemCd, "DG", String.valueOf(dgId)),
+                    children, menuTypes);
+        }
         // company
         addPermsWithSource(grid, "COMPANY:" + u.getCompanyCd(),
                 permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(systemCd, "C", u.getCompanyCd()),
                 children, menuTypes);
+        // company groups (CG) — Step 1
+        for (Long cgId : companyGroupMapRepo.findGroupIdsByCompanyCd(u.getCompanyCd())) {
+            addPermsWithSource(grid, "COMPANY_GROUP:" + cgId,
+                    permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(systemCd, "CG", String.valueOf(cgId)),
+                    children, menuTypes);
+        }
 
         // build summary
         long uniqueMenus = grid.size();
@@ -66,9 +80,13 @@ public class EffectivePermService {
         long viaGroup = grid.values().stream().flatMap(m -> m.values().stream()).flatMap(List::stream)
                 .filter(s -> ((String) s.get("source")).startsWith("USER_GROUP")).count();
         long viaDept = grid.values().stream().flatMap(m -> m.values().stream()).flatMap(List::stream)
-                .filter(s -> ((String) s.get("source")).startsWith("DEPT")).count();
+                .filter(s -> ((String) s.get("source")).equals("DEPT:" + u.getDeptId())).count();
+        long viaDeptGroup = grid.values().stream().flatMap(m -> m.values().stream()).flatMap(List::stream)
+                .filter(s -> ((String) s.get("source")).startsWith("DEPT_GROUP")).count();
         long viaCompany = grid.values().stream().flatMap(m -> m.values().stream()).flatMap(List::stream)
-                .filter(s -> ((String) s.get("source")).startsWith("COMPANY")).count();
+                .filter(s -> ((String) s.get("source")).equals("COMPANY:" + u.getCompanyCd())).count();
+        long viaCompanyGroup = grid.values().stream().flatMap(m -> m.values().stream()).flatMap(List::stream)
+                .filter(s -> ((String) s.get("source")).startsWith("COMPANY_GROUP")).count();
         long folderInherited = grid.values().stream().flatMap(m -> m.values().stream()).flatMap(List::stream)
                 .filter(s -> Boolean.TRUE.equals(s.get("via_folder"))).count();
 
@@ -78,14 +96,16 @@ public class EffectivePermService {
         out.put("company_cd", u.getCompanyCd());
         out.put("dept_id", u.getDeptId());
         out.put("user_nm", u.getUserNm());
-        out.put("summary", Map.of(
-                "menu_count", uniqueMenus,
-                "direct", directs,
-                "via_group", viaGroup,
-                "via_dept", viaDept,
-                "via_company", viaCompany,
-                "via_folder", folderInherited
-        ));
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("menu_count", uniqueMenus);
+        summary.put("direct", directs);
+        summary.put("via_group", viaGroup);
+        summary.put("via_dept", viaDept);
+        summary.put("via_dept_group", viaDeptGroup);
+        summary.put("via_company", viaCompany);
+        summary.put("via_company_group", viaCompanyGroup);
+        summary.put("via_folder", folderInherited);
+        out.put("summary", summary);
 
         // build menu rows
         List<Map<String, Object>> menus = new ArrayList<>();

@@ -48,15 +48,11 @@ public class AuditController {
     @GetMapping("/permissions/by-api")
     public Map<String, Object> byApi(@RequestParam("system_cd") String system,
                                      @RequestParam("api_id") Long apiId) {
-        var refs = maaRepo.findAll().stream()
-                .filter(m -> apiId.equals(m.getApiId()))
-                .toList();
+        // Step 4 — N+1 제거: 인덱스 활용 쿼리
+        var refs = maaRepo.findByApiId(apiId);
         List<Map<String, Object>> rows = new ArrayList<>();
         for (var ref : refs) {
-            permRepo.findAll().stream()
-                    .filter(p -> p.getSystemCd().equals(system))
-                    .filter(p -> p.getActionCd().equals(ref.getActionCd()))
-                    .filter(p -> p.getTargetId().equals(ref.getMenuId()))
+            permRepo.findByMenuActionInSystem(system, ref.getMenuId(), ref.getActionCd())
                     .forEach(p -> {
                         Map<String, Object> r = new LinkedHashMap<>();
                         r.put("menu_id", ref.getMenuId());

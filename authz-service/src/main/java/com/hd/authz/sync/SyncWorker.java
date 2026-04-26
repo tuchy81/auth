@@ -6,6 +6,9 @@ import com.hd.authz.domain.Menu;
 import com.hd.authz.domain.PermChangeLog;
 import com.hd.authz.domain.Permission;
 import com.hd.authz.domain.UserEntity;
+import com.hd.authz.repo.CompanyGroupMapRepo;
+import com.hd.authz.repo.DeptGroupMapRepo;
+import com.hd.authz.repo.DeptRepo;
 import com.hd.authz.repo.MenuRepo;
 import com.hd.authz.repo.PermChangeLogRepo;
 import com.hd.authz.repo.PermissionRepo;
@@ -39,6 +42,9 @@ public class SyncWorker {
     private final MenuRepo menuRepo;
     private final PermissionRepo permissionRepo;
     private final UserGroupMapRepo userGroupMapRepo;
+    private final CompanyGroupMapRepo companyGroupMapRepo;
+    private final DeptGroupMapRepo deptGroupMapRepo;
+    private final DeptRepo deptRepo;
 
     @Value("${authz.sync.batch-size:200}")
     private int batchSize;
@@ -135,29 +141,44 @@ public class SyncWorker {
     private void rebuildScope(String system, String scopeType, String scopeId, Set<String> keys) {
         if (scopeType == null || scopeId == null) return;
         switch (scopeType) {
-            case "C" -> {
-                keys.addAll(flattener.rebuildSubject(system, "C", scopeId));
-                // 회사 산하 모든 사용자의 U-level 도 갱신 (U-level 가 회사 perm 을 흡수)
-                userRepo.findAll().stream()
-                        .filter(u -> scopeId.equals(u.getCompanyCd()))
-                        .forEach(u -> keys.addAll(flattener.rebuildSubject(system, "U", u.getUserId())));
-            }
-            case "D" -> {
-                keys.addAll(flattener.rebuildSubject(system, "D", scopeId));
-                userRepo.findAll().stream()
-                        .filter(u -> scopeId.equals(u.getDeptId()))
-                        .forEach(u -> keys.addAll(flattener.rebuildSubject(system, "U", u.getUserId())));
-            }
-            case "U" -> keys.addAll(flattener.rebuildSubject(system, "U", scopeId));
+            // Step 3 — U-level 가 더 이상 C/D 흡수하지 않으므로 산하 사용자 fan-out 불필요
+            case "C" -> rebuildAllSystems(system, "C", scopeId, keys);
+            case "D" -> rebuildAllSystems(system, "D", scopeId, keys);
+            case "U" -> rebuildAllSystems(system, "U", scopeId, keys);
+
+            // Step 1 — UG 멤버 변동 → 멤버 사용자의 U-level rebuild
             case "UG" -> {
                 long gid;
                 try { gid = Long.parseLong(scopeId); } catch (NumberFormatException e) { return; }
-                userGroupMapRepo.findAll().stream()
-                        .filter(m -> m.getUserGroupId().equals(gid))
-                        .forEach(m -> keys.addAll(flattener.rebuildSubject(system, "U", m.getUserId())));
+                userGroupMapRepo.findMembersByGroupId(gid)
+                        .forEach(m -> rebuildAllSystems(system, "U", m.getUserId(), keys));
             }
-            // CG/DG: 추후 멤버 expand 보완
+            // Step 1 — CG/DG 멤버 변동 → 산하 회사/부서의 C/D-level rebuild
+            case "CG" -> {
+                long gid;
+                try { gid = Long.parseLong(scopeId); } catch (NumberFormatException e) { return; }
+                companyGroupMapRepo.findByCompanyGroupId(gid)
+                        .forEach(m -> rebuildAllSystems(system, "C", m.getCompanyCd(), keys));
+            }
+            case "DG" -> {
+                long gid;
+                try { gid = Long.parseLong(scopeId); } catch (NumberFormatException e) { return; }
+                deptGroupMapRepo.findByDeptGroupId(gid)
+                        .forEach(m -> rebuildAllSystems(system, "D", m.getDeptId(), keys));
+            }
             default -> log.warn("rebuildScope: subjectType '{}' not yet supported", scopeType);
+        }
+    }
+
+    /** scope_event 의 system_cd 가 null 일 수도 있어 (CG/DG/UG_MEMBER_ADD 등) — 그 경우 모든 시스템에 대해 rebuild. */
+    private void rebuildAllSystems(String system, String level, String id, Set<String> keys) {
+        if (system != null) {
+            keys.addAll(flattener.rebuildSubject(system, level, id));
+        } else {
+            // 그룹 멤버 변동은 시스템 비종속 → 모든 시스템 권한 캐시 갱신
+            permissionRepo.findAll().stream()
+                    .map(p -> p.getSystemCd()).distinct()
+                    .forEach(s -> keys.addAll(flattener.rebuildSubject(s, level, id)));
         }
     }
 
@@ -189,8 +210,19 @@ public class SyncWorker {
         try { return Long.parseLong(String.valueOf(v)); } catch (NumberFormatException e) { return null; }
     }
 
-    /** Trigger full rebuild for all users in a system (used at boot). */
+    /** Trigger full rebuild for all C/D/U levels in a system (used at boot — Step 3 separation). */
     public void rebuildAllUsers(String systemCd) {
+        // 회사 — C-level 키
+        permissionRepo.findAll().stream()
+                .filter(p -> systemCd.equals(p.getSystemCd()) && "C".equals(p.getSubjectType()))
+                .map(p -> p.getSubjectId()).distinct()
+                .forEach(c -> flattener.rebuildSubject(systemCd, "C", c));
+        // 부서 — D-level 키
+        permissionRepo.findAll().stream()
+                .filter(p -> systemCd.equals(p.getSystemCd()) && "D".equals(p.getSubjectType()))
+                .map(p -> p.getSubjectId()).distinct()
+                .forEach(d -> flattener.rebuildSubject(systemCd, "D", d));
+        // 사용자 — U-level 키
         for (UserEntity u : userRepo.findAll()) {
             flattener.rebuildSubject(systemCd, "U", u.getUserId());
         }

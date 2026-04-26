@@ -196,21 +196,24 @@ public class MasterController {
     @DeleteMapping("/apis/{id}")
     @Transactional
     public Map<String, Object> deleteApi(@PathVariable Long id) {
-        // remove from menu mapping first
-        menuActionApiRepo.findAll().stream()
-                .filter(m -> id.equals(m.getApiId()))
-                .forEach(menuActionApiRepo::delete);
+        // Step 4 — N+1 제거
+        menuActionApiRepo.findByApiId(id).forEach(menuActionApiRepo::delete);
         apiRepo.deleteById(id);
         return Map.of("ok", true);
     }
 
     @GetMapping("/apis/{id}/usages")
     public List<Map<String, Object>> apiUsages(@PathVariable Long id) {
-        return menuActionApiRepo.findAll().stream()
-                .filter(m -> id.equals(m.getApiId()))
+        return menuActionApiRepo.findByApiId(id).stream()
                 .map(m -> (Map<String, Object>) Map.<String, Object>of(
                         "menu_id", m.getMenuId(), "action_cd", m.getActionCd()))
                 .toList();
+    }
+
+    /** Step 4 — bulk: ApisView 1000번 호출 → 1번 (반환: 매핑된 api_id Set) */
+    @GetMapping("/systems/{system}/api-mapped-set")
+    public java.util.Set<Long> apiMappedSet(@PathVariable String system) {
+        return menuActionApiRepo.findMappedApiIdsForSystem(system);
     }
 
     // =====================================================

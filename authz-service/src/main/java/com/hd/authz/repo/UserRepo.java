@@ -6,4 +6,6 @@ import java.util.List;
 
 public interface UserRepo extends JpaRepository<UserEntity, String> {
     List<UserEntity> findByCompanyCdAndDeptId(String companyCd, String deptId);
+    List<UserEntity> findByCompanyCd(String companyCd);
+    List<UserEntity> findByDeptId(String deptId);
 }

@@ -36,6 +36,8 @@ public class PermissionFlattener {
     private final MenuActionApiRepo menuActionApiRepo;
     private final UserRepo userRepo;
     private final UserGroupMapRepo userGroupMapRepo;
+    private final CompanyGroupMapRepo companyGroupMapRepo;
+    private final DeptGroupMapRepo deptGroupMapRepo;
     private final PermCacheService cacheService;
 
     public Set<String> rebuildSubject(String systemCd, String subjectType, String subjectId) {
@@ -121,31 +123,53 @@ public class PermissionFlattener {
         return writtenKeys;
     }
 
+    /**
+     * Step 1+3 — 각 level이 독립적인 perm set만 보유 (스펙 §6.3.1).
+     *   - C-level: 회사 직접 + CG 상속 (company-scope만)
+     *   - D-level: 부서 직접 + DG 상속 (dept-scope만)
+     *   - U-level: 사용자 직접 + UG 상속만 (회사/부서는 별도 레벨 키에 있음)
+     * checkApi 가 C → D → U 3-key 순회로 합쳐서 평가하므로, 각 level은 자기 책임 perm만 보유.
+     * 회사 perm 변경 시 산하 사용자 U-level fan-out 불필요 → fan-out 폭증 해소.
+     *
+     * Step 2 — 유효기간 필터: valid_from(시작 전), valid_to(만료 후) 적용.
+     */
     private List<Permission> collectPermissionsForLevel(String system, String level,
                                                         String company, String dept, String user) {
+        List<Permission> all = new ArrayList<>();
         if ("C".equals(level)) {
-            return permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "C", company);
-        }
-        if ("D".equals(level)) {
-            return permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "D", dept);
-        }
-        if ("U".equals(level)) {
-            // user direct + user-group permissions
-            List<Permission> direct = permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "U", user);
-            List<Permission> viaGroup = new ArrayList<>();
-            for (Long gid : userGroupMapRepo.findGroupIdsByUserId(user)) {
-                viaGroup.addAll(permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "UG", String.valueOf(gid)));
+            all.addAll(permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "C", company));
+            // CG 상속: 이 회사가 멤버인 모든 회사그룹의 perm
+            for (Long cgId : companyGroupMapRepo.findGroupIdsByCompanyCd(company)) {
+                all.addAll(permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "CG", String.valueOf(cgId)));
             }
-            List<Permission> all = new ArrayList<>(direct);
-            all.addAll(viaGroup);
-            // also Company + Dept inheritance for the user
-            userRepo.findById(user).ifPresent(u -> {
-                all.addAll(permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "C", u.getCompanyCd()));
-                all.addAll(permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "D", u.getDeptId()));
-            });
-            return all;
+        } else if ("D".equals(level)) {
+            all.addAll(permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "D", dept));
+            // DG 상속: 이 부서가 멤버인 모든 부서그룹의 perm (companyCd 필요)
+            if (company != null) {
+                for (Long dgId : deptGroupMapRepo.findGroupIdsByDept(company, dept)) {
+                    all.addAll(permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "DG", String.valueOf(dgId)));
+                }
+            }
+        } else if ("U".equals(level)) {
+            // 직접 부여 + UG 상속만 (회사/부서/CG/DG 는 C/D-level 키에 별도 보관)
+            all.addAll(permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "U", user));
+            for (Long ugId : userGroupMapRepo.findGroupIdsByUserId(user)) {
+                all.addAll(permissionRepo.findBySystemCdAndSubjectTypeAndSubjectId(system, "UG", String.valueOf(ugId)));
+            }
         }
-        return List.of();
+        return filterValid(all);
+    }
+
+    /** Step 2 — valid_from / valid_to 적용 */
+    private List<Permission> filterValid(List<Permission> all) {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        List<Permission> out = new ArrayList<>(all.size());
+        for (Permission p : all) {
+            if (p.getValidFrom() != null && p.getValidFrom().isAfter(now)) continue; // 아직 시작 전
+            if (p.getValidTo()   != null && p.getValidTo().isBefore(now)) continue;  // 만료
+            out.add(p);
+        }
+        return out;
     }
 
     /**

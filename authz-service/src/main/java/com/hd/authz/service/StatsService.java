@@ -24,18 +24,14 @@ public class StatsService {
     public Map<String, Object> systemStats(String systemCd) {
         long menus = menuRepo.findBySystemCdOrderBySortOrderAscMenuIdAsc(systemCd).size();
         long apis = apiRepo.findBySystemCd(systemCd).size();
-        long perms = permissionRepo.findAll().stream().filter(p -> p.getSystemCd().equals(systemCd)).count();
+        // Step 4 — N+1 제거
+        long perms = permissionRepo.findBySystemCd(systemCd).size();
         long activeUsers = userRepo.findAll().stream().filter(u -> "A".equals(u.getStatus())).count();
         String shardStrategy = shardConfigRepo.findById(systemCd).map(c -> c.getShardStrategy()).orElse("METHOD_DEPTH");
 
-        // mapping counts (filter by system_cd)
-        Set<Long> apiIdsInSystem = apiRepo.findBySystemCd(systemCd).stream()
-                .map(a -> a.getApiId()).collect(java.util.stream.Collectors.toSet());
-        long mappedApiIds = menuActionApiRepo.findAll().stream()
-                .map(m -> m.getApiId())
-                .filter(apiIdsInSystem::contains)
-                .distinct().count();
-        long unmapped = apiIdsInSystem.size() - mappedApiIds;
+        // Step 4 — 단일 distinct query
+        long mappedApiIds = menuActionApiRepo.findMappedApiIdsForSystem(systemCd).size();
+        long unmapped = apis - mappedApiIds;
 
         // redis cache size (total keys for this system)
         Set<String> keys = redis.keys("perm:*:" + systemCd + ":*");
