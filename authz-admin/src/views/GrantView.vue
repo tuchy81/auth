@@ -35,7 +35,11 @@
                  @click="toggleSubject(s)">
               <el-checkbox :model-value="isSelected(s)" @click.stop @change="toggleSubject(s)" />
               <el-avatar :size="28" :style="avatarStyle(subjectType)">
-                <el-icon><component :is="iconFor(subjectType)" /></el-icon>
+                <span v-if="TYPE_META[subjectType].group" class="dual-icon">
+                  <el-icon class="dual-back"><component :is="iconFor(subjectType)" /></el-icon>
+                  <el-icon class="dual-front"><component :is="iconFor(subjectType)" /></el-icon>
+                </span>
+                <el-icon v-else><component :is="iconFor(subjectType)" /></el-icon>
               </el-avatar>
               <div class="row-body">
                 <div class="nm">{{ s.label }}</div>
@@ -168,7 +172,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import {
   Lightning, Check, Close, Search, RefreshLeft,
-  OfficeBuilding, HomeFilled, User, UserFilled, Files, School
+  OfficeBuilding, HomeFilled, User
 } from '@element-plus/icons-vue'
 import { Master } from '@/api'
 import api from '@/api'
@@ -201,14 +205,15 @@ const subjectTypes = [
   { code: 'UG', label: '사용자그룹' }
 ]
 
-// type별 아이콘과 아바타 색상
+// 타입별 아이콘과 색상.
+//  - 그룹 타입(CG/DG/UG)은 group:true → 같은 base 아이콘을 2개 겹쳐 표시 (그룹 의미 시각화)
 const TYPE_META = {
-  C:  { icon: OfficeBuilding, bg: '#3b82f6', tag: 'primary' },   // 파랑
-  D:  { icon: HomeFilled,     bg: '#10b981', tag: 'success' },   // 초록
-  U:  { icon: User,           bg: '#f59e0b', tag: 'warning' },   // 황색
-  CG: { icon: Files,          bg: '#8b5cf6', tag: 'primary' },   // 보라
-  DG: { icon: School,         bg: '#06b6d4', tag: 'success' },   // 시안
-  UG: { icon: UserFilled,     bg: '#ef4444', tag: 'danger'  }    // 빨강
+  C:  { icon: OfficeBuilding, group: false, bg: '#3b82f6', tag: 'primary' },  // 회사 — 파랑
+  D:  { icon: HomeFilled,     group: false, bg: '#10b981', tag: 'success' },  // 부서 — 초록
+  U:  { icon: User,           group: false, bg: '#f59e0b', tag: 'warning' },  // 사용자 — 황색
+  CG: { icon: OfficeBuilding, group: true,  bg: '#1d4ed8', tag: 'primary' },  // 회사그룹 — 짙은 파랑 + 회사 아이콘 ×2
+  DG: { icon: HomeFilled,     group: true,  bg: '#047857', tag: 'success' },  // 부서그룹 — 짙은 초록 + 부서 아이콘 ×2
+  UG: { icon: User,           group: true,  bg: '#b91c1c', tag: 'danger'  }   // 사용자그룹 — 짙은 빨강 + 사용자 아이콘 ×2
 }
 function iconFor (t) { return TYPE_META[t]?.icon || User }
 function avatarStyle (t) { return { background: TYPE_META[t]?.bg || '#6b7280', color: '#fff' } }
@@ -441,4 +446,10 @@ function resetSelection () {
 .src-line { display:inline-block; margin-left: 4px; }
 .folder-hint { color: #f59e0b; margin-left: 4px; font-size: 11px; }
 .footer-btns { text-align: right; margin-top: 8px; display:flex; gap: 8px; justify-content:flex-end; }
+
+/* 그룹 타입: 같은 아이콘 2개를 살짝 겹쳐서 "여러 명/여러 개" 의미를 시각화 */
+.dual-icon { position: relative; display: inline-block; width: 18px; height: 18px; }
+.dual-icon .el-icon { position: absolute; font-size: 13px; }
+.dual-icon .dual-back  { top: -2px; left: -3px; opacity: 0.55; }
+.dual-icon .dual-front { bottom: -2px; right: -3px; }
 </style>
