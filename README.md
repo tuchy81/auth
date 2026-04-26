@@ -60,6 +60,19 @@ curl http://localhost:8080/api/v1/authz/cache/stats
 curl -H 'X-User-Id: U00001' http://localhost:8081/api/purchase/items/n0
 ```
 
+## DB 초기화 구조
+
+| 단계 | 위치 | 책임 |
+|---|---|---|
+| **DDL** (스키마) | `authz-service/src/main/resources/db/migration/V1__core_schema.sql` | TB_* 21개 테이블 + 인덱스 |
+| **DML** (정적 기준데이터) | `authz-service/src/main/resources/db/migration/V2__seed_base.sql` | 시스템 3 / 샤드cfg 3 / 액션 21 / 회사 10 / 부서 30 (`ON CONFLICT DO NOTHING` 멱등) |
+| **DML** (생성 데이터) | `authz-service/src/main/java/com/hd/authz/seed/DataSeeder.java` | 사용자 200 / 메뉴 ~110 / API 1,000 / 권한 870 (Random seed 고정 → 재현 가능) |
+
+부팅 흐름:
+1. Flyway가 V1, V2 순차 적용 (이미 적용된 버전은 스킵)
+2. `DataSeeder` 가 `tb_user.count()==0` 이면 생성 데이터 시드
+3. `SyncWorker.rebuildAllUsers()` 가 모든 사용자에 대해 캐시 빌드
+
 ## 스펙 매핑
 
 | 스펙 §  | 구현 위치 |

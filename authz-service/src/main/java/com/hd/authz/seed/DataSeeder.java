@@ -13,7 +13,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.util.*;
 
 @Slf4j
@@ -28,12 +27,9 @@ public class DataSeeder implements CommandLineRunner {
     @Value("${authz.seed.api-count:1000}")
     private int apiCount;
 
-    private final SystemRepo systemRepo;
-    private final ShardConfigRepo shardConfigRepo;
     private final CompanyRepo companyRepo;
     private final DeptRepo deptRepo;
     private final UserRepo userRepo;
-    private final ActionRepo actionRepo;
     private final MenuRepo menuRepo;
     private final MenuImplRepo menuImplRepo;
     private final MenuActionRepo menuActionRepo;
@@ -53,16 +49,15 @@ public class DataSeeder implements CommandLineRunner {
     @Transactional
     public void run(String... args) {
         if (!enabled) return;
-        if (systemRepo.count() == 0) {
-            log.info("=== Seeding sample data: 3 systems / 10 companies / ~30 depts / ~200 users / {} APIs ===", apiCount);
-            seedCompanies();
-            seedSystems();
-            seedActions();
+        // 정적 기준데이터(시스템/샤드cfg/액션/회사/부서)는 V2 Flyway 마이그레이션이 처리.
+        // 여기서는 생성 데이터(사용자/메뉴/API/권한)만 담당한다.
+        if (userRepo.count() == 0) {
+            log.info("=== Seeding generated data: 200 users / menus / {} APIs / 870 permissions ===", apiCount);
             seedUsers();
             Map<String, List<Menu>> menuLeavesBySystem = seedMenusAndApis();
             seedPermissions(menuLeavesBySystem);
         } else {
-            log.info("Seed skipped — already populated; will rebuild caches");
+            log.info("Generated data already present — skipping seed; will rebuild caches");
         }
 
         log.info("Triggering full cache rebuild for all systems / users…");
@@ -70,52 +65,6 @@ public class DataSeeder implements CommandLineRunner {
             syncWorker.rebuildAllUsers(s);
         }
         log.info("=== Seed/rebuild complete ===");
-    }
-
-    private void seedCompanies() {
-        for (int i = 1; i <= 10; i++) {
-            String cd = String.format("CO%02d", i);
-            companyRepo.save(Company.builder()
-                    .companyCd(cd).companyNm("HD Company " + i).build());
-            // 3 depts per company
-            for (int d = 1; d <= 3; d++) {
-                String deptId = cd + "-D" + d;
-                deptRepo.save(Dept.builder()
-                        .companyCd(cd).deptId(deptId).deptCd("D" + d)
-                        .deptNm("Dept " + d + " of " + cd).build());
-            }
-        }
-    }
-
-    private void seedSystems() {
-        String[] names = {"ERP 시스템", "MES 시스템", "포털 시스템"};
-        String[] types = {"ERP", "MES", "PORTAL"};
-        String[] strats = {"METHOD_DEPTH_SEG", "METHOD_DEPTH", "METHOD_DEPTH_SEG"};
-        for (int i = 0; i < SYSTEMS.length; i++) {
-            String s = SYSTEMS[i];
-            systemRepo.save(SystemEntity.builder()
-                    .systemCd(s).systemNm(names[i]).systemNmEn(s + " System")
-                    .description(names[i] + " — sample seed data")
-                    .ownerCompanyCd("CO01").systemType(types[i])
-                    .baseUrl("https://" + s.toLowerCase() + ".hd.local")
-                    .frontendType("VUE").status("A").goLiveDate(LocalDate.of(2026, 1, 1))
-                    .build());
-            shardConfigRepo.save(SystemShardConfig.builder()
-                    .systemCd(s).shardStrategy(strats[i])
-                    .segmentPosition(1).segmentMaxLength(32).segmentFallback("_root")
-                    .build());
-        }
-    }
-
-    private void seedActions() {
-        String[] names = {"조회","생성","수정","삭제","승인","내보내기","출력"};
-        for (String s : SYSTEMS) {
-            for (int i = 0; i < ACTIONS.length; i++) {
-                actionRepo.save(Action.builder()
-                        .systemCd(s).actionCd(ACTIONS[i])
-                        .actionNm(names[i]).sortOrder(i).build());
-            }
-        }
     }
 
     private void seedUsers() {
