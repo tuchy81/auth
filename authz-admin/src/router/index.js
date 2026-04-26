@@ -13,6 +13,7 @@ const routes = [
   { path: '/master/apis', component: () => import('@/views/master/ApisView.vue') },
   { path: '/master/actions', component: () => import('@/views/master/ActionsView.vue') },
   { path: '/perftest', component: () => import('@/views/PerfTestView.vue') },
-  { path: '/proptest', component: () => import('@/views/PropTestView.vue') }
+  { path: '/proptest', component: () => import('@/views/PropTestView.vue') },
+  { path: '/health', component: () => import('@/views/HealthView.vue') }
 ]
 export default createRouter({ history: createWebHistory(), routes })
