@@ -16,6 +16,7 @@
           <el-menu-item index="/master/actions">액션</el-menu-item>
         </el-sub-menu>
         <el-menu-item index="/menu-tree"><el-icon><Menu /></el-icon>메뉴 트리(미리보기)</el-menu-item>
+        <el-menu-item index="/perftest"><el-icon><DataLine /></el-icon>성능 테스트</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -36,7 +37,7 @@
 
 <script setup>
 import { onMounted } from 'vue'
-import { Key, Menu, Setting, Document, MagicStick, UserFilled } from '@element-plus/icons-vue'
+import { Key, Menu, Setting, Document, MagicStick, UserFilled, DataLine } from '@element-plus/icons-vue'
 import { useAppStore } from '@/store'
 const app = useAppStore()
 onMounted(() => app.loadSystems())

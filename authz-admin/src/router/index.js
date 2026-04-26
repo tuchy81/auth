@@ -11,6 +11,7 @@ const routes = [
   { path: '/master/shard', component: () => import('@/views/master/ShardView.vue') },
   { path: '/master/menus', component: () => import('@/views/master/MenusView.vue') },
   { path: '/master/apis', component: () => import('@/views/master/ApisView.vue') },
-  { path: '/master/actions', component: () => import('@/views/master/ActionsView.vue') }
+  { path: '/master/actions', component: () => import('@/views/master/ActionsView.vue') },
+  { path: '/perftest', component: () => import('@/views/PerfTestView.vue') }
 ]
 export default createRouter({ history: createWebHistory(), routes })
