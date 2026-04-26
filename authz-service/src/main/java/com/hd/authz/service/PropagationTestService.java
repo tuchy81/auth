@@ -50,7 +50,8 @@ public class PropagationTestService {
         List<Map<String, Object>> scenarios = new ArrayList<>();
         if (req.scenarios == null || req.scenarios.isEmpty()) {
             req.scenarios = List.of("PERM_GRANT", "PERM_REVOKE", "UG_MEMBER_ADD",
-                                    "MENU_CREATE_LEAF", "MENU_ACTION_API_CHANGE");
+                                    "MENU_CREATE_LEAF", "MENU_ACTION_API_CHANGE",
+                                    "FOLDER_INHERIT_NEW_LEAF");
         }
         for (String s : req.scenarios) {
             try {
@@ -60,6 +61,7 @@ public class PropagationTestService {
                     case "UG_MEMBER_ADD" -> runUgMemberAdd(req.iterations, req.fastSync);
                     case "MENU_CREATE_LEAF" -> runMenuCreateLeaf(req.iterations, req.fastSync);
                     case "MENU_ACTION_API_CHANGE" -> runMenuActionApiChange(req.iterations, req.fastSync);
+                    case "FOLDER_INHERIT_NEW_LEAF" -> runFolderInheritNewLeaf(req.iterations, req.fastSync);
                     default -> Map.of("scenario", s, "error", "unknown scenario");
                 };
                 scenarios.add(r);
@@ -344,6 +346,87 @@ public class PropagationTestService {
                     targetApi.getHttpMethod(), targetApi.getUrlPattern()), MAX_WAIT_MS);
         }
         return result("MENU_ACTION_API_CHANGE", n, ok, timeout, meas);
+    }
+
+    // ============================================================
+    // Scenario 6: FOLDER_INHERIT_NEW_LEAF
+    //   사용자에게 폴더 권한이 이미 있음. 그 폴더 아래에 신규 leaf+API 매핑을
+    //   추가하면 (별도 권한 부여 없이) 자동으로 새 API에 access 가능해야 함.
+    //   스펙 §8.6 — 자동 fan-out 동작 검증.
+    // ============================================================
+    private Map<String, Object> runFolderInheritNewLeaf(int n, boolean fastSync) {
+        UserEntity u = userRepo.findById("U00050").orElseGet(() -> userRepo.findAll().get(0));
+        // 자손 leaf가 충분히 있는 폴더 선택 (purchase 도메인 폴더)
+        Menu folder = menuRepo.findBySystemCdOrderBySortOrderAscMenuIdAsc("ERP").stream()
+                .filter(m -> "F".equals(m.getMenuType()))
+                .filter(m -> menuRepo.findByParentMenuId(m.getMenuId()).stream()
+                        .anyMatch(c -> "M".equals(c.getMenuType())))
+                .findFirst().orElse(null);
+        if (folder == null) return error("FOLDER_INHERIT_NEW_LEAF", "no folder with leaf children");
+
+        // pick an unmapped API
+        Set<Long> mappedApis = new HashSet<>();
+        menuActionApiRepo.findAll().forEach(m -> mappedApis.add(m.getApiId()));
+        ApiEntity api = apiRepo.findBySystemCd("ERP").stream()
+                .filter(a -> !mappedApis.contains(a.getApiId()))
+                .findFirst()
+                .orElseGet(() -> apiRepo.findBySystemCd("ERP").get(apiRepo.findBySystemCd("ERP").size() - 1));
+
+        // SETUP: 사용자에게 폴더 R 권한 부여 (직접) → 캐시 안정화
+        Permission folderPerm = permissionRepo.findUnique("ERP", u.getCompanyCd(), "U", u.getUserId(),
+                "M", folder.getMenuId(), "R")
+                .orElseGet(() -> permissionService.grant(Permission.builder()
+                        .systemCd("ERP").companyCd(u.getCompanyCd())
+                        .subjectType("U").subjectId(u.getUserId())
+                        .targetType("M").targetId(folder.getMenuId()).actionCd("R")
+                        .createdBy("proptest").updatedBy("proptest").build(), "proptest"));
+        triggerSyncMaybe(fastSync);
+        // wait until cache stable (any existing leaf accessible)
+        try { Thread.sleep(150); } catch (InterruptedException ignored) {}
+        warmupService.warmupSystem("ERP", u.getUserId());
+
+        List<long[]> meas = new ArrayList<>();
+        int ok = 0, timeout = 0;
+        for (int i = 0; i < n; i++) {
+            // baseline: user should NOT yet have access to the new API (unmapped)
+            // MEASUREMENT START: add new leaf as folder child + map API + emit MENU_TREE_CHANGE
+            long t0 = System.nanoTime();
+            Menu leaf = menuRepo.save(Menu.builder()
+                    .systemCd("ERP").parentMenuId(folder.getMenuId()).menuType("M")
+                    .menuCd("PROPTEST_INHERIT_" + i + "_" + System.currentTimeMillis())
+                    .menuNm("PropTest Inherit Leaf " + i).status("A").isVisible("Y")
+                    .createdBy("proptest").updatedBy("proptest").build());
+            menuImplRepo.save(MenuImpl.builder().menuId(leaf.getMenuId())
+                    .routePath("/proptest/inherit/" + i).build());
+            menuActionRepo.save(MenuAction.builder().menuId(leaf.getMenuId()).actionCd("R").build());
+            menuActionApiRepo.save(MenuActionApi.builder()
+                    .menuId(leaf.getMenuId()).actionCd("R").apiId(api.getApiId()).build());
+            // 핵심: MENU_TREE_CHANGE 이벤트만 emit. 사용자 권한 grant 하지 않음.
+            permissionService.emit("MENU_TREE_CHANGE", "ERP", null, null,
+                    Map.of("menu_id", leaf.getMenuId(), "op", "ADD"));
+            long t1 = System.nanoTime();
+
+            triggerSyncMaybe(fastSync);
+            // SyncWorker 가 조상 폴더의 권한을 추적해 user U 의 캐시를 rebuild 하면 access 허용
+            long propMs = waitFor(() -> authz.check("ERP", u.getCompanyCd(), u.getDeptId(), u.getUserId(),
+                    api.getHttpMethod(), api.getUrlPattern()), MAX_WAIT_MS);
+            if (propMs >= 0) { ok++; meas.add(new long[]{(t1 - t0) / 1000, propMs}); }
+            else timeout++;
+
+            // cleanup: leaf 삭제 (DB rows + 매핑)
+            menuActionApiRepo.findByMenuId(leaf.getMenuId()).forEach(menuActionApiRepo::delete);
+            menuActionRepo.findByMenuId(leaf.getMenuId()).forEach(menuActionRepo::delete);
+            menuImplRepo.findById(leaf.getMenuId()).ifPresent(menuImplRepo::delete);
+            menuRepo.delete(leaf);
+            permissionService.emit("MENU_TREE_CHANGE", "ERP", null, null,
+                    Map.of("menu_id", leaf.getMenuId(), "op", "DELETE"));
+            triggerSyncMaybe(fastSync);
+            waitFor(() -> !authz.check("ERP", u.getCompanyCd(), u.getDeptId(), u.getUserId(),
+                    api.getHttpMethod(), api.getUrlPattern()), MAX_WAIT_MS);
+        }
+        // teardown: 폴더 권한 revoke
+        permissionService.revoke(folderPerm.getPermId(), "proptest");
+        return result("FOLDER_INHERIT_NEW_LEAF", n, ok, timeout, meas);
     }
 
     // ============================================================

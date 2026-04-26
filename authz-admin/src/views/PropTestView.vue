@@ -120,7 +120,8 @@ const scenarioOptions = [
   { code: 'PERM_REVOKE', label: 'PERM_REVOKE — 권한 해제', desc: '직접 부여된 권한 해제 → 거부 반영' },
   { code: 'UG_MEMBER_ADD', label: 'UG_MEMBER_ADD — UG 멤버 추가', desc: '권한 있는 UG에 사용자 추가' },
   { code: 'MENU_CREATE_LEAF', label: 'MENU_CREATE_LEAF — 신규 메뉴', desc: '리프 + 매핑 + 권한 일괄 생성' },
-  { code: 'MENU_ACTION_API_CHANGE', label: 'MENU_ACTION_API_CHANGE — 매핑 변경', desc: '기존 메뉴-액션에 새 API 추가' }
+  { code: 'MENU_ACTION_API_CHANGE', label: 'MENU_ACTION_API_CHANGE — 매핑 변경', desc: '기존 메뉴-액션에 새 API 추가' },
+  { code: 'FOLDER_INHERIT_NEW_LEAF', label: 'FOLDER_INHERIT_NEW_LEAF — 폴더 상속', desc: '폴더 권한 보유자에게 신규 leaf 자동 전파 (스펙 §8.6)' }
 ]
 
 const running = ref(false)
