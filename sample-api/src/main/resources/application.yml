@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: sample-api
+
+server:
+  port: 8081
+
+authz:
+  service-url: ${AUTHZ_SERVICE_URL:http://localhost:8080}
+  default:
+    system-cd: ERP
+    company-cd: CO01
+    dept-id: CO01-D1
+    user-id: U00001
+  enforce: ${AUTHZ_ENFORCE:true}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

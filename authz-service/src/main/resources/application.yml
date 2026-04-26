@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: authz-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:authz}
+    username: ${DB_USER:authz}
+    password: ${DB_PASS:authz}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 500ms
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 32
+          max-idle: 16
+          min-idle: 4
+      repositories:
+        enabled: false
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,caches
+  endpoint:
+    health:
+      show-details: always
+
+authz:
+  cache:
+    caffeine:
+      max-weight: 200000000
+      expire-after-access-min: 30
+    negative-ttl-sec: 10
+  sync:
+    poll-interval-ms: 1000
+    batch-size: 200
+  seed:
+    enabled: ${SEED_ENABLED:true}
+    api-count: 1000
+
+logging:
+  level:
+    root: INFO
+    com.hd.authz: INFO
+    org.hibernate.SQL: WARN

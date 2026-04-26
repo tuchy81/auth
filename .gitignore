@@ -1,0 +1,12 @@
+target/
+build/
+*.iml
+.idea/
+.vscode/
+.DS_Store
+node_modules/
+dist/
+.env
+*.log
+.gradle/
+HELP.md
