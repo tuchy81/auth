@@ -149,10 +149,5 @@ function depth (url) {
 </script>
 
 <style scoped>
-.stats-bar { display:flex; gap:10px; padding: 10px 12px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:8px; }
-.stat { min-width: 110px; }
-.stat .lbl { color:#6b7280; font-size: 12px; }
-.stat .val { font-size: 18px; font-weight: 600; color: #111827; }
-.stat .val.ok { color: #16a34a; }
-.stat .val.warn { color: #f59e0b; }
+.stats-bar { margin-bottom: 10px; }
 </style>

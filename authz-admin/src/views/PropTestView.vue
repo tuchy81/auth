@@ -87,24 +87,15 @@
       </el-table>
 
       <!-- per-scenario sample chart -->
-      <div v-for="r in resultRows.filter(x => x.samples?.length)" :key="r.scenario" style="margin-top:16px;">
-        <h4 style="margin: 4px 0;">{{ r.label }} — 반복별 측정값</h4>
-        <svg :viewBox="`0 0 ${chartW} 180`" width="100%" height="180">
-          <g transform="translate(40,10)">
-            <line v-for="g in 4" :key="g" :x1="0" :x2="chartW - 80" :y1="140 - g*32" :y2="140 - g*32" stroke="#e5e7eb" stroke-dasharray="2 2" />
-            <g v-for="(s, i) in r.samples" :key="i" :transform="`translate(${i * (chartW - 80) / r.samples.length}, 0)`">
-              <rect :x="6" :y="140 - propBarH(s, r)" :width="((chartW - 80) / r.samples.length) - 12" :height="propBarH(s, r)" fill="#3b82f6" rx="2" />
-              <text :x="((chartW - 80) / r.samples.length) / 2" :y="156" text-anchor="middle" font-size="10" fill="#6b7280">#{{ i + 1 }}</text>
-              <text :x="((chartW - 80) / r.samples.length) / 2" :y="140 - propBarH(s, r) - 4" text-anchor="middle" font-size="10" fill="#1f2937" font-weight="600">{{ s.prop_ms }}ms</text>
-            </g>
-            <text :x="-5" :y="0" text-anchor="end" font-size="10" fill="#6b7280">{{ maxProp(r) }}ms</text>
-            <text :x="-5" :y="140" text-anchor="end" font-size="10" fill="#6b7280">0</text>
-          </g>
-        </svg>
-        <div class="legend">
-          쓰기 평균 {{ r.write_us.avg }}μs · 캐시 반영 평균 {{ r.propagation_ms.avg }}ms · 합계 평균 {{ r.total_ms.avg }}ms
-        </div>
-      </div>
+      <el-card v-for="r in resultRows.filter(x => x.samples?.length)" :key="r.scenario" shadow="never" style="margin-top:14px;">
+        <template #header>
+          <b>{{ r.label }} — 반복별 측정값</b>
+          <span class="legend">
+            쓰기 평균 {{ r.write_us.avg }}μs · 캐시 반영 평균 {{ r.propagation_ms.avg }}ms · 합계 평균 {{ r.total_ms.avg }}ms
+          </span>
+        </template>
+        <v-chart :option="sampleChartOption(r)" :autoresize="true" style="height: 220px;" />
+      </el-card>
 
       <el-alert type="info" :closable="false" style="margin-top:14px;">
         ⏱ <b>Fast Sync OFF</b>: 실제 운영 환경(스펙 §3.2: 권한 변경 반영 30초 이내)을 흉내낸 값.
@@ -136,7 +127,6 @@ const running = ref(false)
 const progress = ref(0)
 const result = ref(null)
 const form = reactive({ iterations: 5, scenarios: ['PERM_GRANT', 'UG_MEMBER_ADD', 'MENU_CREATE_LEAF'], fastSync: true })
-const chartW = 800
 
 const resultRows = computed(() => {
   if (!result.value) return []
@@ -171,12 +161,28 @@ async function run () {
   }
 }
 
-function propBarH (s, r) {
-  const max = maxProp(r)
-  if (!max) return 0
-  return Math.max(2, Math.round((s.prop_ms / max) * 130))
+function sampleChartOption (r) {
+  const samples = r.samples || []
+  return {
+    grid: { left: 50, right: 20, top: 20, bottom: 30 },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const i = params[0].dataIndex
+        const s = samples[i]
+        return `#${i + 1}<br/>쓰기: ${s.write_us}μs<br/>캐시반영: <b>${s.prop_ms}ms</b>`
+      }
+    },
+    xAxis: { type: 'category', data: samples.map((_, i) => `#${i + 1}`), axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'value', name: 'ms', axisLabel: { fontSize: 10 } },
+    series: [{
+      type: 'bar', name: '캐시 반영 (ms)',
+      data: samples.map(s => s.prop_ms),
+      itemStyle: { color: '#3b82f6', borderRadius: [4, 4, 0, 0] },
+      label: { show: true, position: 'top', fontSize: 10, formatter: '{c}ms' }
+    }]
+  }
 }
-function maxProp (r) { return Math.max(1, ...r.samples.map(s => s.prop_ms)) }
 
 function latColor (ms) {
   if (ms == null) return ''

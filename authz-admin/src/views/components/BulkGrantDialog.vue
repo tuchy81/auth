@@ -53,13 +53,16 @@
     <!-- impact preview -->
     <el-alert v-if="impact" type="warning" :closable="false" class="impact">
       <template #title>⚠ 영향 범위 사전 확인</template>
-      <table class="imp-tbl">
-        <tr><td>부여 건수</td><td><b>{{ impact.grant_count }}건</b><span class="hint">(메뉴 {{ impact.leaf_count }} × 액션 {{ impact.action_count }})</span></td></tr>
-        <tr><td>영향 사용자</td><td><b>{{ impact.affected_users }}명</b></td></tr>
-        <tr><td>신규 허용 API 수</td><td><b>{{ impact.new_api_count }}개</b></td></tr>
-        <tr><td>캐시 갱신 규모</td><td><code>perm:api:U:* — {{ impact.cache_rebuild_keys }}건 rebuild</code></td></tr>
-        <tr><td>예상 처리 시간</td><td>약 {{ Math.round(impact.est_ms / 1000) }}초</td></tr>
-      </table>
+      <el-descriptions :column="1" border size="small" style="margin-top:6px;">
+        <el-descriptions-item label="부여 건수">
+          <b>{{ impact.grant_count }}건</b>
+          <span class="hint">(메뉴 {{ impact.leaf_count }} × 액션 {{ impact.action_count }})</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="영향 사용자"><b>{{ impact.affected_users }}명</b></el-descriptions-item>
+        <el-descriptions-item label="신규 허용 API 수"><b>{{ impact.new_api_count }}개</b></el-descriptions-item>
+        <el-descriptions-item label="캐시 갱신 규모"><code>perm:api:U:* — {{ impact.cache_rebuild_keys }}건 rebuild</code></el-descriptions-item>
+        <el-descriptions-item label="예상 처리 시간">약 {{ Math.round(impact.est_ms / 1000) }}초</el-descriptions-item>
+      </el-descriptions>
     </el-alert>
 
     <template #footer>
@@ -196,8 +199,6 @@ async function apply () {
 .step :deep(.el-card__body) { padding: 10px 14px; }
 .tree-wrap { max-height: 200px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 4px; padding: 4px; margin-top: 6px; }
 .impact { margin-top: 6px; }
-.imp-tbl { width: 100%; border-collapse: collapse; }
-.imp-tbl td { padding: 4px 8px; border-bottom: 1px dashed #f3f4f6; }
-.imp-tbl td:first-child { color: #6b7280; width: 140px; }
-.imp-tbl .hint { color: #94a3b8; font-size: 12px; margin-left: 6px; }
+.hint { color: #94a3b8; font-size: 12px; margin-left: 6px; }
+code { background: #f4f6f8; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
 </style>

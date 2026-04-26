@@ -47,14 +47,22 @@
           </template>
 
           <!-- 통계 바 -->
-          <div class="stats-bar" v-if="!isNew">
-            <div class="stat"><div class="lbl">메뉴</div><div class="val">{{ stats.menus ?? '-' }}</div></div>
-            <div class="stat"><div class="lbl">API</div><div class="val">{{ stats.apis ?? '-' }} <span class="sub">매핑 {{ stats.api_mapped }} / 미매핑 {{ stats.api_unmapped }}</span></div></div>
-            <div class="stat"><div class="lbl">권한 부여</div><div class="val">{{ stats.permissions ?? '-' }}</div></div>
-            <div class="stat"><div class="lbl">활성 사용자</div><div class="val">{{ stats.active_users ?? '-' }}</div></div>
-            <div class="stat"><div class="lbl">샤딩 전략</div><div class="val sm">{{ stats.shard_strategy || '-' }}</div></div>
-            <div class="stat"><div class="lbl">캐시 키</div><div class="val">{{ stats.cache_keys ?? '-' }}</div></div>
-          </div>
+          <el-row :gutter="10" v-if="!isNew" class="stats-bar">
+            <el-col :span="4"><el-card shadow="never"><el-statistic :value="stats.menus ?? 0" title="메뉴" /></el-card></el-col>
+            <el-col :span="4"><el-card shadow="never">
+              <el-statistic :value="stats.apis ?? 0" title="API" />
+              <div class="hint">매핑 {{ stats.api_mapped }} / 미매핑 {{ stats.api_unmapped }}</div>
+            </el-card></el-col>
+            <el-col :span="4"><el-card shadow="never"><el-statistic :value="stats.permissions ?? 0" title="권한 부여" /></el-card></el-col>
+            <el-col :span="4"><el-card shadow="never"><el-statistic :value="stats.active_users ?? 0" title="활성 사용자" /></el-card></el-col>
+            <el-col :span="4"><el-card shadow="never">
+              <div class="el-statistic">
+                <div class="el-statistic__head">샤딩 전략</div>
+                <div class="el-statistic__content"><span class="el-statistic__number" style="font-size:14px;">{{ stats.shard_strategy || '-' }}</span></div>
+              </div>
+            </el-card></el-col>
+            <el-col :span="4"><el-card shadow="never"><el-statistic :value="stats.cache_keys ?? 0" title="캐시 키" /></el-card></el-col>
+          </el-row>
 
           <el-tabs v-model="tab">
             <!-- 기본정보 -->
@@ -280,10 +288,6 @@ watch(() => app.systemCd, async (cd) => {
 .sys-item .row2 { color: #6b7280; font-size: 12px; padding-left: 4px; margin-top: 4px; }
 .sys-item .api-cnt { color: #1677ff; }
 .cd { color: #6b7280; margin-left: 6px; font-weight: normal; }
-.stats-bar { display:flex; gap:10px; padding: 10px 12px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:14px; flex-wrap: wrap; }
-.stat { min-width: 110px; }
-.stat .lbl { color:#6b7280; font-size: 12px; }
-.stat .val { font-size: 18px; font-weight: 600; color: #111827; }
-.stat .val.sm { font-size: 13px; }
-.stat .val .sub { color: #6b7280; font-size: 11px; font-weight: normal; }
+.stats-bar { margin-bottom: 14px; }
+.hint { color: #94a3b8; font-size: 11px; padding-top: 4px; }
 </style>

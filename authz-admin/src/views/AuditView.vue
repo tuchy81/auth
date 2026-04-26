@@ -253,10 +253,6 @@ function exportCsv () {
 
 <style scoped>
 .summary-row { margin-top: 8px; }
-.summary-row .lbl { color: #6b7280; font-size: 12px; }
-.summary-row .val { font-size: 22px; font-weight: 700; color: #111827; }
-.summary-row .val .sub { color: #94a3b8; font-size: 14px; }
-.summary-row .sub { color: #94a3b8; font-size: 12px; }
 .src-tags { padding: 8px 0; display: flex; gap: 8px; }
 .check { color: #16a34a; font-weight: 700; }
 .dash { color: #d1d5db; }

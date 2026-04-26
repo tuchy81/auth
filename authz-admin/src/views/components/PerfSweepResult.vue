@@ -23,7 +23,7 @@
       </el-table-column>
       <el-table-column label="P99" width="120" align="right">
         <template #default="{ row }">
-          <span :class="latColor(row.latency_us.p99)"><b>{{ formatLat(row.latency_us.p99) }}</b></span>
+          <b :style="{ color: latColor(row.latency_us.p99) }">{{ formatLat(row.latency_us.p99) }}</b>
         </template>
       </el-table-column>
       <el-table-column label="max" width="100" align="right">
@@ -34,68 +34,64 @@
       </el-table-column>
     </el-table>
 
-    <!-- RPS vs concurrency chart -->
     <el-row :gutter="14" style="margin-top:14px;">
       <el-col :span="12">
         <el-card shadow="never">
           <template #header><b>RPS vs 동시성</b></template>
-          <svg :viewBox="`0 0 ${chartW + 40} 220`" width="100%" height="220">
-            <g transform="translate(40,10)">
-              <line v-for="g in 4" :key="g" x1="0" :x2="chartW"
-                    :y1="180 - g*40" :y2="180 - g*40" stroke="#e5e7eb" stroke-dasharray="2 2" />
-              <polyline :points="rpsPoints" fill="none" stroke="#3b82f6" stroke-width="2.5" />
-              <g v-for="(l, i) in data.levels" :key="i" :transform="`translate(${i * stepX}, 0)`">
-                <circle :cx="stepX/2" :cy="180 - rpsY(l)" r="4" fill="#3b82f6" />
-                <text :x="stepX/2" :y="200" text-anchor="middle" font-size="10" fill="#6b7280">c={{ l.concurrency }}</text>
-                <text :x="stepX/2" :y="180 - rpsY(l) - 8" text-anchor="middle" font-size="10" fill="#1f2937" font-weight="600">{{ l.rps.toFixed(0) }}</text>
-              </g>
-              <text x="-5" y="0" text-anchor="end" font-size="10" fill="#6b7280">{{ maxRps.toFixed(0) }}</text>
-              <text x="-5" y="180" text-anchor="end" font-size="10" fill="#6b7280">0</text>
-            </g>
-          </svg>
+          <v-chart :option="rpsOption" :autoresize="true" style="height: 240px;" />
         </el-card>
       </el-col>
       <el-col :span="12">
         <el-card shadow="never">
           <template #header><b>P99 지연 vs 동시성</b></template>
-          <svg :viewBox="`0 0 ${chartW + 40} 220`" width="100%" height="220">
-            <g transform="translate(40,10)">
-              <line v-for="g in 4" :key="g" x1="0" :x2="chartW"
-                    :y1="180 - g*40" :y2="180 - g*40" stroke="#e5e7eb" stroke-dasharray="2 2" />
-              <polyline :points="p99Points" fill="none" stroke="#ef4444" stroke-width="2.5" />
-              <g v-for="(l, i) in data.levels" :key="i" :transform="`translate(${i * stepX}, 0)`">
-                <circle :cx="stepX/2" :cy="180 - p99Y(l)" r="4" fill="#ef4444" />
-                <text :x="stepX/2" :y="200" text-anchor="middle" font-size="10" fill="#6b7280">c={{ l.concurrency }}</text>
-                <text :x="stepX/2" :y="180 - p99Y(l) - 8" text-anchor="middle" font-size="10" fill="#1f2937" font-weight="600">{{ formatLat(l.latency_us.p99) }}</text>
-              </g>
-              <text x="-5" y="0" text-anchor="end" font-size="10" fill="#6b7280">{{ formatLat(maxP99) }}</text>
-              <text x="-5" y="180" text-anchor="end" font-size="10" fill="#6b7280">0</text>
-            </g>
-          </svg>
+          <v-chart :option="p99Option" :autoresize="true" style="height: 240px;" />
         </el-card>
       </el-col>
     </el-row>
 
     <el-alert type="info" :closable="false" style="margin-top:14px;">
-      💡 동시성을 높일수록 RPS는 보통 증가하다 어느 시점에서 포화됩니다. 그 직전 구간이 시스템의 최적 동작점입니다. P99이 5ms 목표(스펙 §3.2)를 넘으면 캐시 미스·GC pause를 의심해보세요.
+      💡 동시성을 높일수록 RPS는 보통 증가하다 어느 시점에서 포화됩니다. 그 직전 구간이 시스템의 최적 동작점입니다.
+      P99이 5ms 목표(스펙 §3.2)를 넘으면 캐시 미스·GC pause를 의심해보세요.
     </el-alert>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+
 const props = defineProps({ data: Object })
 
-const chartW = 460
-const stepX = computed(() => chartW / Math.max(1, props.data.levels.length))
-const maxRps = computed(() => Math.max(1, ...props.data.levels.map(l => l.rps)))
-const maxP99 = computed(() => Math.max(1, ...props.data.levels.map(l => l.latency_us.p99 || 0)))
+const concurrencies = computed(() => props.data.levels.map(l => `c=${l.concurrency}`))
 
-function rpsY (l) { return Math.round((l.rps / maxRps.value) * 160) }
-function p99Y (l) { return Math.round(((l.latency_us.p99 || 0) / maxP99.value) * 160) }
+const rpsOption = computed(() => ({
+  grid: { left: 60, right: 20, top: 20, bottom: 40 },
+  tooltip: { trigger: 'axis' },
+  xAxis: { type: 'category', data: concurrencies.value, axisLabel: { fontSize: 11 } },
+  yAxis: { type: 'value', name: 'RPS', axisLabel: { fontSize: 10 } },
+  series: [{
+    type: 'line', smooth: true, name: 'RPS',
+    data: props.data.levels.map(l => Math.round(l.rps)),
+    lineStyle: { width: 3, color: '#3b82f6' },
+    itemStyle: { color: '#3b82f6' },
+    label: { show: true, position: 'top', formatter: (p) => p.value.toLocaleString(), fontSize: 11 },
+    areaStyle: { color: 'rgba(59, 130, 246, 0.1)' }
+  }]
+}))
 
-const rpsPoints = computed(() => props.data.levels.map((l, i) => `${i * stepX.value + stepX.value/2},${180 - rpsY(l)}`).join(' '))
-const p99Points = computed(() => props.data.levels.map((l, i) => `${i * stepX.value + stepX.value/2},${180 - p99Y(l)}`).join(' '))
+const p99Option = computed(() => ({
+  grid: { left: 60, right: 20, top: 20, bottom: 40 },
+  tooltip: { trigger: 'axis', valueFormatter: (v) => formatLat(v) },
+  xAxis: { type: 'category', data: concurrencies.value, axisLabel: { fontSize: 11 } },
+  yAxis: { type: 'value', name: 'μs', axisLabel: { fontSize: 10, formatter: (v) => formatLat(v) } },
+  series: [{
+    type: 'line', smooth: true, name: 'P99',
+    data: props.data.levels.map(l => l.latency_us.p99 || 0),
+    lineStyle: { width: 3, color: '#ef4444' },
+    itemStyle: { color: '#ef4444' },
+    label: { show: true, position: 'top', formatter: (p) => formatLat(p.value), fontSize: 11 },
+    areaStyle: { color: 'rgba(239, 68, 68, 0.08)' }
+  }]
+}))
 
 function formatLat (us) {
   if (us == null) return '-'
@@ -104,13 +100,9 @@ function formatLat (us) {
   return (us / 1_000_000).toFixed(2) + ' s'
 }
 function latColor (us) {
-  if (us == null) return ''
-  if (us < 1000) return 'ok'
-  if (us < 5000) return 'warn-soft'
-  return 'warn'
+  if (us == null) return '#111827'
+  if (us < 1000) return '#16a34a'
+  if (us < 5000) return '#eab308'
+  return '#ef4444'
 }
 </script>
-
-<style scoped>
-.ok { color:#16a34a; } .warn-soft { color:#eab308; } .warn { color:#ef4444; }
-</style>
