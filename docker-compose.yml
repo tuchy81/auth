@@ -9,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - auth-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U authz -d authz"]
       interval: 5s
@@ -23,7 +23,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redisdata:/data
+      - auth-redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -45,5 +45,7 @@ services:
         condition: service_healthy
 
 volumes:
-  pgdata:
-  redisdata:
+  auth-pgdata:
+    name: auth-pgdata
+  auth-redisdata:
+    name: auth-redisdata
