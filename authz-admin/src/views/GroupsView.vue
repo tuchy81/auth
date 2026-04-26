@@ -38,8 +38,9 @@
           <el-tabs v-model="detailTab">
             <el-tab-pane label="멤버" name="members">
               <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
-                <el-button size="small" @click="addMemberDlg = true">+ 멤버 추가</el-button>
+                <el-button size="small" type="primary" @click="openAddDialog"><el-icon><Plus /></el-icon>멤버 추가</el-button>
                 <el-button size="small" v-if="tab==='ug'" @click="csvDlg = true">📁 CSV 가져오기</el-button>
+                <el-tag size="small" type="info" effect="plain">총 {{ members.length }}명</el-tag>
               </div>
               <el-table :data="members" size="small" max-height="400">
                 <el-table-column v-for="c in memberCols" :key="c.key" :prop="c.key" :label="c.label" :width="c.width" />
@@ -62,6 +63,7 @@
       </el-col>
     </el-row>
 
+    <!-- 신규 그룹 다이얼로그 -->
     <el-dialog v-model="showNewDlg" title="신규 그룹" width="500px">
       <el-form label-width="100px">
         <el-form-item label="그룹명"><el-input v-model="newG.groupNm" /></el-form-item>
@@ -77,17 +79,75 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="addMemberDlg" title="멤버 추가" width="500px">
-      <el-select v-if="tab === 'cg'" v-model="newMember" placeholder="회사 선택" filterable style="width:100%">
-        <el-option v-for="c in companies" :key="c.companyCd" :label="`${c.companyCd} ${c.companyNm}`" :value="c.companyCd" />
-      </el-select>
-      <el-cascader v-else-if="tab === 'dg'" v-model="newMember" :options="deptOptions" placeholder="회사 → 부서" style="width:100%" />
-      <el-select v-else v-model="newMember" placeholder="사용자 선택" filterable style="width:100%">
-        <el-option v-for="u in users" :key="u.userId" :label="`${u.userId} ${u.userNm}`" :value="u.userId" />
-      </el-select>
+    <!-- 멤버 추가 다이얼로그 — 타입별 UI -->
+    <el-dialog v-model="addMemberDlg" :title="addDlgTitle" :width="addDlgWidth" @close="resetAddState">
+      <el-input v-model="addSearch" :placeholder="searchPlaceholder" size="small" :prefix-icon="Search" clearable style="margin-bottom:8px;" />
+
+      <!-- CG: 회사 체크박스 리스트 -->
+      <div v-if="tab === 'cg'" class="member-pool">
+        <el-checkbox-group v-model="cgPicked">
+          <div v-for="c in filteredCompanies" :key="c.companyCd" class="member-row" :class="{ disabled: cgAlreadyMember(c.companyCd) }">
+            <el-checkbox :value="c.companyCd" :disabled="cgAlreadyMember(c.companyCd)">
+              <el-icon style="vertical-align:middle; color:#3b82f6;"><OfficeBuilding /></el-icon>
+              <b style="margin-left:6px;">{{ c.companyCd }}</b> {{ c.companyNm }}
+              <el-tag v-if="cgAlreadyMember(c.companyCd)" size="small" type="info" style="margin-left:6px;">이미 멤버</el-tag>
+            </el-checkbox>
+          </div>
+        </el-checkbox-group>
+        <div v-if="!filteredCompanies.length" class="hint sm">검색 결과 없음</div>
+      </div>
+
+      <!-- DG: 회사 → 부서 트리 -->
+      <div v-else-if="tab === 'dg'" class="member-pool">
+        <el-tree
+          ref="dgTreeRef"
+          :data="deptTree"
+          show-checkbox
+          node-key="key"
+          :default-expand-all="true"
+          :filter-node-method="treeFilter"
+          :default-checked-keys="dgPreCheckedKeys">
+          <template #default="{ data }">
+            <span class="tree-node">
+              <el-icon v-if="data.type === 'company'" style="color:#3b82f6;"><OfficeBuilding /></el-icon>
+              <el-icon v-else style="color:#10b981;"><HomeFilled /></el-icon>
+              <span :class="{ 'already-member': data.alreadyMember }">{{ data.label }}</span>
+              <el-tag v-if="data.alreadyMember" size="small" type="info" style="margin-left:6px;">이미 멤버</el-tag>
+            </span>
+          </template>
+        </el-tree>
+      </div>
+
+      <!-- UG: 회사 → 부서 → 사용자 트리 -->
+      <div v-else class="member-pool">
+        <el-tree
+          ref="ugTreeRef"
+          :data="userTree"
+          show-checkbox
+          node-key="key"
+          :default-expand-level="1"
+          :filter-node-method="treeFilter"
+          :default-checked-keys="ugPreCheckedKeys">
+          <template #default="{ data }">
+            <span class="tree-node">
+              <el-icon v-if="data.type === 'company'" style="color:#3b82f6;"><OfficeBuilding /></el-icon>
+              <el-icon v-else-if="data.type === 'dept'" style="color:#10b981;"><HomeFilled /></el-icon>
+              <el-icon v-else style="color:#f59e0b;"><User /></el-icon>
+              <span :class="{ 'already-member': data.alreadyMember }">{{ data.label }}</span>
+              <el-tag v-if="data.type !== 'company' && data.type !== 'dept' && data.alreadyMember" size="small" type="info" style="margin-left:6px;">이미 멤버</el-tag>
+            </span>
+          </template>
+        </el-tree>
+      </div>
+
+      <div class="add-footer-info">
+        <el-tag size="small" type="success">신규 추가 대상: {{ pickedCount }}건</el-tag>
+        <el-tag size="small" type="info" effect="plain">상위 노드 체크 시 자손 모두 자동 선택</el-tag>
+      </div>
+
       <template #footer>
         <el-button @click="addMemberDlg = false">취소</el-button>
-        <el-button type="primary" @click="addMember">추가</el-button>
+        <el-button type="primary" :disabled="!pickedCount" @click="applyAddMembers">추가 ({{ pickedCount }})</el-button>
       </template>
     </el-dialog>
 
@@ -104,8 +164,8 @@ U00002" />
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { Plus, Search, OfficeBuilding, HomeFilled, User } from '@element-plus/icons-vue'
 import { Master } from '@/api'
 import api from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -123,10 +183,17 @@ const companies = ref([])
 const users = ref([])
 const showNewDlg = ref(false)
 const newG = reactive({ groupNm: '', companyCd: null })
-const addMemberDlg = ref(false)
-const newMember = ref(null)
 const csvDlg = ref(false)
 const csvText = ref('')
+
+// add-member dialog state
+const addMemberDlg = ref(false)
+const addSearch = ref('')
+const cgPicked = ref([])             // company codes to add
+const dgTreeRef = ref(null)
+const ugTreeRef = ref(null)
+const dgPreCheckedKeys = ref([])
+const ugPreCheckedKeys = ref([])
 
 const filteredGroups = computed(() => {
   const s = search.value.toLowerCase()
@@ -139,19 +206,132 @@ const memberCols = computed(() => {
   return [{ key: 'userId', label: '사용자ID', width: 200 }]
 })
 
-const deptOptions = computed(() => companies.value.map(c => ({
-  value: c.companyCd, label: `${c.companyCd} ${c.companyNm}`,
-  children: (c._depts || []).map(d => ({ value: d.deptId, label: `${d.deptId} ${d.deptNm}` }))
-})))
+const addDlgTitle = computed(() => ({
+  cg: '회사 그룹 — 회사 추가',
+  dg: '부서 그룹 — 부서 추가',
+  ug: '사용자 그룹 — 사용자 추가'
+})[tab.value] || '멤버 추가')
+const addDlgWidth = computed(() => tab.value === 'cg' ? '520px' : '700px')
+const searchPlaceholder = computed(() => ({
+  cg: '회사명 / 코드 검색',
+  dg: '회사 / 부서명 검색',
+  ug: '회사 / 부서 / 사용자 검색'
+})[tab.value])
+
+const filteredCompanies = computed(() => {
+  const s = addSearch.value.toLowerCase()
+  return companies.value.filter(c => !s || (c.companyCd + c.companyNm).toLowerCase().includes(s))
+})
 
 function gid (g) { return g?.companyGroupId ?? g?.deptGroupId ?? g?.userGroupId }
 
+// ============================================================
+// 트리 데이터 빌더
+// ============================================================
+const memberSet = computed(() => {
+  // current group's existing member identifiers
+  const set = new Set()
+  if (tab.value === 'cg') members.value.forEach(m => set.add(m.companyCd))
+  else if (tab.value === 'dg') members.value.forEach(m => set.add(`${m.companyCd}:${m.deptId}`))
+  else members.value.forEach(m => set.add(m.userId))
+  return set
+})
+
+function cgAlreadyMember (cd) { return memberSet.value.has(cd) }
+
+const deptTree = computed(() => {
+  return companies.value.map(c => {
+    const depts = (c._depts || []).map(d => {
+      const key = `dept:${c.companyCd}:${d.deptId}`
+      return {
+        key, type: 'dept', label: `${d.deptId} ${d.deptNm}`,
+        companyCd: c.companyCd, deptId: d.deptId,
+        alreadyMember: memberSet.value.has(`${c.companyCd}:${d.deptId}`),
+        disabled: memberSet.value.has(`${c.companyCd}:${d.deptId}`)
+      }
+    })
+    return {
+      key: `company:${c.companyCd}`,
+      type: 'company',
+      label: `${c.companyCd} ${c.companyNm}`,
+      children: depts
+    }
+  })
+})
+
+const userTree = computed(() => {
+  return companies.value.map(c => {
+    const depts = (c._depts || []).map(d => {
+      const usersInDept = users.value.filter(u => u.companyCd === c.companyCd && u.deptId === d.deptId)
+      const userNodes = usersInDept.map(u => {
+        const key = `user:${u.userId}`
+        return {
+          key, type: 'user', label: `${u.userId} ${u.userNm}`,
+          userId: u.userId, alreadyMember: memberSet.value.has(u.userId),
+          disabled: memberSet.value.has(u.userId)
+        }
+      })
+      return {
+        key: `dept:${c.companyCd}:${d.deptId}`,
+        type: 'dept',
+        label: `${d.deptCd || d.deptId} ${d.deptNm} (${userNodes.length}명)`,
+        children: userNodes
+      }
+    }).filter(d => d.children.length > 0)
+    return {
+      key: `company:${c.companyCd}`, type: 'company',
+      label: `${c.companyCd} ${c.companyNm}`, children: depts
+    }
+  }).filter(c => c.children.length > 0)
+})
+
+function treeFilter (val, data) {
+  if (!val) return true
+  return (data.label || '').toLowerCase().includes(val.toLowerCase())
+}
+watch(addSearch, v => {
+  if (tab.value === 'dg') dgTreeRef.value?.filter(v)
+  else if (tab.value === 'ug') ugTreeRef.value?.filter(v)
+})
+
+// ============================================================
+// 신규 추가 대상 카운트 (탭별)
+// ============================================================
+const pickedCount = computed(() => {
+  if (tab.value === 'cg') return cgPicked.value.filter(c => !cgAlreadyMember(c)).length
+  if (tab.value === 'dg') return getCheckedNewDepts().length
+  if (tab.value === 'ug') return getCheckedNewUsers().length
+  return 0
+})
+
+function getCheckedNewDepts () {
+  if (!dgTreeRef.value) return []
+  return dgTreeRef.value.getCheckedNodes(true)   // leaf only
+      .filter(n => n.type === 'dept' && !n.alreadyMember)
+}
+function getCheckedNewUsers () {
+  if (!ugTreeRef.value) return []
+  return ugTreeRef.value.getCheckedNodes(true)
+      .filter(n => n.type === 'user' && !n.alreadyMember)
+}
+
+// computes update on every check/uncheck — el-tree doesn't have reactive getCheckedKeys binding.
+// Use a tick-driven recount via dialog 'visible' watch + manual refreshes.
+const recountTick = ref(0)
+const _ = computed(() => recountTick.value && pickedCount.value)
+function bumpCount () { recountTick.value++ }
+
+// ============================================================
+// Lifecycle
+// ============================================================
 onMounted(async () => {
   companies.value = await Master.companies()
   for (const c of companies.value) c._depts = await Master.depts(c.companyCd)
   users.value = await Master.users()
   await loadGroups()
 })
+
+watch(tab, () => loadGroups())
 
 async function loadGroups () {
   const url = tab.value === 'cg' ? '/groups/company' : tab.value === 'dg' ? '/groups/dept' : '/groups/user'
@@ -209,14 +389,44 @@ async function del () {
   await loadGroups()
 }
 
-async function addMember () {
+// ============================================================
+// 다중 멤버 추가 (Add Dialog)
+// ============================================================
+function openAddDialog () {
+  resetAddState()
+  addMemberDlg.value = true
+}
+function resetAddState () {
+  addSearch.value = ''
+  cgPicked.value = []
+  dgPreCheckedKeys.value = []
+  ugPreCheckedKeys.value = []
+}
+
+async function applyAddMembers () {
   const id = gid(selected.value)
-  if (tab.value === 'cg') await api.post(`/groups/company/${id}/members/${newMember.value}`)
-  else if (tab.value === 'dg') {
-    const [companyCd, deptId] = newMember.value
-    await api.post(`/groups/dept/${id}/members`, { companyCd, deptId })
-  } else await api.post(`/groups/user/${id}/members/${newMember.value}`)
-  newMember.value = null
+  if (tab.value === 'cg') {
+    const toAdd = cgPicked.value.filter(c => !cgAlreadyMember(c))
+    let added = 0
+    for (const cd of toAdd) {
+      try { await api.post(`/groups/company/${id}/members/${cd}`); added++ } catch {}
+    }
+    ElMessage.success(`회사 ${added}건 추가`)
+  } else if (tab.value === 'dg') {
+    const newDepts = getCheckedNewDepts()
+    let added = 0
+    for (const d of newDepts) {
+      try { await api.post(`/groups/dept/${id}/members`, { companyCd: d.companyCd, deptId: d.deptId }); added++ } catch {}
+    }
+    ElMessage.success(`부서 ${added}건 추가`)
+  } else {
+    const newUsers = getCheckedNewUsers()
+    let added = 0
+    for (const u of newUsers) {
+      try { await api.post(`/groups/user/${id}/members/${u.userId}`); added++ } catch {}
+    }
+    ElMessage.success(`사용자 ${added}건 추가`)
+  }
   addMemberDlg.value = false
   await loadMembers()
 }
@@ -245,4 +455,11 @@ async function importCsv () {
 .g-item.active { background: #e6f0ff; border-left: 3px solid #1677ff; }
 .g-item .sub { color: #94a3b8; font-size: 12px; }
 .hint { padding: 40px; color: #94a3b8; text-align: center; }
+.hint.sm { padding: 8px; }
+.member-pool { max-height: 380px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; background: #fafbfc; }
+.member-row { padding: 4px 6px; border-bottom: 1px solid #f3f4f6; }
+.member-row.disabled { opacity: 0.6; }
+.tree-node { display: inline-flex; align-items: center; gap: 4px; }
+.tree-node .already-member { color: #94a3b8; text-decoration: line-through; }
+.add-footer-info { display:flex; gap:8px; padding: 8px 0 0; align-items:center; }
 </style>
