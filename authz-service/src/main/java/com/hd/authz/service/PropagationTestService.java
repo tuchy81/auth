@@ -44,7 +44,8 @@ public class PropagationTestService {
     private final WarmupService warmupService;
     private final SyncWorker syncWorker;
 
-    private static final long MAX_WAIT_MS = 30_000;
+    // 30s → 5s — 비정상 시 hang 방지 (정상 fastSync 는 ms 단위, 자연 sync 는 ~1s 가 일반)
+    private static final long MAX_WAIT_MS = 5_000;
 
     public Map<String, Object> run(PropRunReq req) {
         List<Map<String, Object>> scenarios = new ArrayList<>();

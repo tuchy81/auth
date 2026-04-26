@@ -56,7 +56,7 @@ authz:
     negative-ttl-sec: 10
   sync:
     poll-interval-ms: 1000
-    batch-size: 200
+    batch-size: 30          # 200 → 30 (한 cycle 처리 시간 단축)
   seed:
     enabled: ${SEED_ENABLED:true}
     api-count: 1000
