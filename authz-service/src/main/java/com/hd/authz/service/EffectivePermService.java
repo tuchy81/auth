@@ -7,6 +7,7 @@ import com.hd.authz.repo.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -128,7 +129,11 @@ public class EffectivePermService {
     private void addPermsWithSource(Map<Long, Map<String, List<Map<String, Object>>>> grid,
                                     String source, List<Permission> perms,
                                     Map<Long, List<Long>> children, Map<Long, String> menuTypes) {
+        // Step 2 — valid_from / valid_to 필터 (effective 응답에서도 만료 제외)
+        LocalDateTime now = LocalDateTime.now();
         for (Permission p : perms) {
+            if (p.getValidFrom() != null && p.getValidFrom().isAfter(now)) continue;
+            if (p.getValidTo() != null && p.getValidTo().isBefore(now)) continue;
             Long target = p.getTargetId();
             String type = menuTypes.getOrDefault(target, "M");
             List<Long> leaves = "F".equals(type) ? expandFolder(target, children, menuTypes) : List.of(target);
